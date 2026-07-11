@@ -1,4 +1,4 @@
-# ops_agent
+# fleet-medic
 
 維運 agent 的語彙脈絡:一個被異常喚醒、用分層工具診斷與修復 VPS fleet、行動後自我驗證的 runtime agent。管的是「跑著的服務」,不是「專案的開發工作」。
 
