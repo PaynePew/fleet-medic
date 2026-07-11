@@ -8,7 +8,12 @@ import subprocess
 
 import pytest
 
-from ops_mcp.command_runner import CommandResult, local_command_runner, ssh_command_runner
+from ops_mcp.command_runner import (
+    CommandResult,
+    local_command_runner,
+    run_checked,
+    ssh_command_runner,
+)
 
 
 def test_command_result_ok_true_on_zero_returncode():
@@ -72,3 +77,14 @@ def test_command_result_is_frozen():
     result = CommandResult(stdout="", stderr="", returncode=0)
     with pytest.raises(AttributeError):
         result.returncode = 1
+
+
+def test_run_checked_returns_result_on_success():
+    runner = lambda command: CommandResult(stdout="ok", stderr="", returncode=0)  # noqa: E731
+    assert run_checked(runner, ["true"], "boom").stdout == "ok"
+
+
+def test_run_checked_raises_with_prefix_and_stderr_on_failure():
+    runner = lambda command: CommandResult(stdout="", stderr="disk full  ", returncode=1)  # noqa: E731
+    with pytest.raises(RuntimeError, match=r"^get_vitals: `df` failed: disk full$"):
+        run_checked(runner, ["df"], "get_vitals: `df` failed")

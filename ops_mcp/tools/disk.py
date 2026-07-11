@@ -6,7 +6,7 @@ grepping raw `du` output out of a dump."""
 from __future__ import annotations
 
 from ops_mcp.bounds import DEFAULT_TOP_N, take_top_n
-from ops_mcp.command_runner import CommandRunner
+from ops_mcp.command_runner import CommandRunner, run_checked
 
 DU_COMMAND = ["du", "-x", "-b", "--max-depth=2", "/"]
 DOCKER_DF_COMMAND = [
@@ -62,17 +62,13 @@ def _parse_docker_system_df(df_output: str) -> list[dict]:
 
 def disk_breakdown(runner: CommandRunner, top_n: int = DEFAULT_TOP_N) -> dict:
     """Return top-N disk-usage paths (biggest first) plus docker system df totals."""
-    du_result = runner(DU_COMMAND)
-    if not du_result.ok:
-        raise RuntimeError(f"disk_breakdown: `du` failed: {du_result.stderr.strip()}")
+    du_result = run_checked(runner, DU_COMMAND, "disk_breakdown: `du` failed")
     paths = _parse_du(du_result.stdout)
     kept_paths, dropped_paths = take_top_n(paths, top_n)
 
-    docker_result = runner(DOCKER_DF_COMMAND)
-    if not docker_result.ok:
-        raise RuntimeError(
-            f"disk_breakdown: `docker system df` failed: {docker_result.stderr.strip()}"
-        )
+    docker_result = run_checked(
+        runner, DOCKER_DF_COMMAND, "disk_breakdown: `docker system df` failed"
+    )
     docker_rows = _parse_docker_system_df(docker_result.stdout)
 
     return {

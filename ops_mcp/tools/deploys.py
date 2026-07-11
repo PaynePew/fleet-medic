@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from ops_mcp.command_runner import CommandRunner
+from ops_mcp.command_runner import CommandRunner, run_checked
 
 MAX_DEPLOYS = 50
 DEFAULT_DEPLOYS = 10
@@ -17,9 +17,8 @@ def list_recent_deploys(runner: CommandRunner, limit: int = DEFAULT_DEPLOYS) -> 
     """Return the `limit` (hard-capped at MAX_DEPLOYS) most recent workflow runs."""
     bounded_limit = min(max(limit, 1), MAX_DEPLOYS)
 
-    result = runner(["gh", "run", "list", "--limit", str(bounded_limit), "--json", _JSON_FIELDS])
-    if not result.ok:
-        raise RuntimeError(f"list_recent_deploys: `gh run list` failed: {result.stderr.strip()}")
+    command = ["gh", "run", "list", "--limit", str(bounded_limit), "--json", _JSON_FIELDS]
+    result = run_checked(runner, command, "list_recent_deploys: `gh run list` failed")
 
     try:
         runs = json.loads(result.stdout)

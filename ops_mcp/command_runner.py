@@ -14,8 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-_SSH_TIMEOUT_SECONDS = 30
-_LOCAL_TIMEOUT_SECONDS = 30
+_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -40,9 +39,7 @@ def local_command_runner() -> CommandRunner:
     """Build a CommandRunner that runs `command` as a local subprocess."""
 
     def run(command: list[str]) -> CommandResult:
-        proc = subprocess.run(
-            command, capture_output=True, text=True, timeout=_LOCAL_TIMEOUT_SECONDS
-        )
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
         return CommandResult(stdout=proc.stdout, stderr=proc.stderr, returncode=proc.returncode)
 
     return run
@@ -62,9 +59,19 @@ def ssh_command_runner(*, host: str, user: str, identity_file: str) -> CommandRu
             "--",
             *command,
         ]
-        proc = subprocess.run(
-            ssh_argv, capture_output=True, text=True, timeout=_SSH_TIMEOUT_SECONDS
-        )
+        proc = subprocess.run(ssh_argv, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
         return CommandResult(stdout=proc.stdout, stderr=proc.stderr, returncode=proc.returncode)
 
     return run
+
+
+def run_checked(runner: CommandRunner, command: list[str], error_prefix: str) -> CommandResult:
+    """Run `command` and raise RuntimeError(f"{error_prefix}: {stderr}") on failure.
+
+    Every read tool needs this exact check-and-raise shape after each command
+    it runs, so it lives here once instead of being repeated in each tool.
+    """
+    result = runner(command)
+    if not result.ok:
+        raise RuntimeError(f"{error_prefix}: {result.stderr.strip()}")
+    return result

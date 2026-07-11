@@ -4,7 +4,7 @@ Agent's context (CLAUDE.md: 工具輸出一律有界)."""
 
 from __future__ import annotations
 
-from ops_mcp.command_runner import CommandRunner
+from ops_mcp.command_runner import CommandRunner, run_checked
 
 MAX_TAIL_LINES = 500
 DEFAULT_TAIL_LINES = 200
@@ -16,9 +16,8 @@ def tail_logs(runner: CommandRunner, service: str, lines: int = DEFAULT_TAIL_LIN
         raise ValueError("tail_logs: service must be a non-empty container/service name")
     bounded_lines = min(max(lines, 1), MAX_TAIL_LINES)
 
-    result = runner(["docker", "logs", "--tail", str(bounded_lines), "--timestamps", service])
-    if not result.ok:
-        raise RuntimeError(f"tail_logs: `docker logs {service}` failed: {result.stderr.strip()}")
+    command = ["docker", "logs", "--tail", str(bounded_lines), "--timestamps", service]
+    result = run_checked(runner, command, f"tail_logs: `docker logs {service}` failed")
 
     all_lines = result.stdout.splitlines()
     # Defense in depth: re-truncate even if the underlying command returned more.

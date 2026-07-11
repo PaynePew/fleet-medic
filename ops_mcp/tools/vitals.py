@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ops_mcp.bounds import DEFAULT_TOP_N, take_top_n
-from ops_mcp.command_runner import CommandRunner
+from ops_mcp.command_runner import CommandRunner, run_checked
 
 DF_COMMAND = ["df", "-P", "/"]
 INSPECT_COMMAND = [
@@ -59,14 +59,10 @@ def get_vitals(runner: CommandRunner, top_n: int = DEFAULT_TOP_N) -> dict:
     count descending) so a truncated top-N never hides the containers that
     actually matter.
     """
-    df_result = runner(DF_COMMAND)
-    if not df_result.ok:
-        raise RuntimeError(f"get_vitals: `df -P /` failed: {df_result.stderr.strip()}")
+    df_result = run_checked(runner, DF_COMMAND, "get_vitals: `df -P /` failed")
     disk_percent = _parse_disk_percent(df_result.stdout)
 
-    inspect_result = runner(INSPECT_COMMAND)
-    if not inspect_result.ok:
-        raise RuntimeError(f"get_vitals: docker inspect failed: {inspect_result.stderr.strip()}")
+    inspect_result = run_checked(runner, INSPECT_COMMAND, "get_vitals: docker inspect failed")
     services = _parse_services(inspect_result.stdout)
     services.sort(key=lambda s: (s.running, -s.restart_count, s.name))
 
