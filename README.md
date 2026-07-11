@@ -23,3 +23,18 @@ uv run ruff check .  # lint
 ```
 
 CI(`.github/workflows/ci.yml`)在每個 push/PR to `main` 跑 lint 與 test 兩腿。
+
+## ops-mcp(讀工具)
+
+Tool Belt 的讀層(`get_vitals` / `disk_breakdown` / `tail_logs` /
+`list_recent_deploys` / `read_runbook`),MCP 包裝,stdio transport。Claude
+Code 可直接掛上手動呼叫:
+
+```sh
+claude mcp add ops-mcp -- uv run --directory <repo 路徑> python -m ops_mcp.server
+```
+
+`get_vitals` / `disk_breakdown` / `tail_logs` 需要 `OPS_BOX_HOST` +
+`OPS_RO_SSH_KEY_PATH`(選填 `OPS_RO_SSH_USER`,預設 `ops-ro`)才能真連線;
+`list_recent_deploys` 用本機已認證的 `gh`;`read_runbook` 純讀 repo 內檔案,
+免設定即可用。
