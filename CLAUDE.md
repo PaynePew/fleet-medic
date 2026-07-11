@@ -33,3 +33,17 @@ MCP 工具帶診斷、閘門後修復、行動後自我驗證、產出 incident 
 - 模式供應商 kbqabot:budget ledger、autonomy/rung ladder、獨立 Verdict、
   deploy/k8s 慣例可直接參考 `../knowledge_base_qa_bot`。
 - Commit 慣例:conventional commits,無 AI attribution trailer。
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary, label strings equal to role names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at root, ADRs in `project-docs/adr/`. See `docs/agents/domain.md`.
