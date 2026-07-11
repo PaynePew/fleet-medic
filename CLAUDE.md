@@ -47,3 +47,11 @@ Default five-role vocabulary, label strings equal to role names. See `docs/agent
 ### Domain docs
 
 Single-context: `CONTEXT.md` at root, ADRs in `project-docs/adr/`. See `docs/agents/domain.md`.
+
+### Slice orchestrator(專案版)
+
+用 `project-docs/agents/orchestrator.js`(`Workflow({scriptPath: 'project-docs/agents/orchestrator.js', args: {...}})`),
+不用全域 slice-orchestrator。prompts 在 `project-docs/agents/prompts/`(commit 慣例已改為
+conventional commits);審查基準 `project-docs/CODING_STANDARDS.md`——reviewer-only
+(sub-agent 只能 flag 不能編輯)+ Freshness 戳記:**落地 Accepted ADR 的同一 session
+必須 reconcile 該檔並推進戳記;最新 ADR 編號 > 戳記 = drift,要旗標**。
