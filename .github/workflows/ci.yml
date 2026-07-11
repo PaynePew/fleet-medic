@@ -27,7 +27,7 @@ jobs:
           version: "latest"
 
       - name: Sync dev dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Ruff check
         run: uv run ruff check .
@@ -46,7 +46,7 @@ jobs:
           version: "latest"
 
       - name: Sync dev dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Run pytest
         run: uv run pytest
