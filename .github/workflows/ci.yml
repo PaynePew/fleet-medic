@@ -1,0 +1,52 @@
+# Phase 1 slice 1 scaffold gate. Two legs (lint, test) so a red suite or a
+# ruff violation can't merge unnoticed — this is the CI that has to exist
+# before any merge-ladder semantics do (roadmap.md, PRD "repo 腳手架").
+#
+# Python version comes from the committed .python-version (3.12); uv
+# downloads that interpreter itself, so no separate setup-python step.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Sync dev dependencies
+        run: uv sync
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Sync dev dependencies
+        run: uv sync
+
+      - name: Run pytest
+        run: uv run pytest
