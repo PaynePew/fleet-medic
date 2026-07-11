@@ -1,0 +1,16 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+
+# local env
+.env
+.env.*
+
+# run artifacts (ledgers land in Actions artifacts, never in repo)
+ledgers/
+*.local.*
