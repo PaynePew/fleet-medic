@@ -1,19 +1,23 @@
 """main: the sensor's Actions entrypoint. `run_tick` is the testable core —
-its only I/O is through the two injected CommandRunners (issue #4 AC); the
-thin `main()` below wires real env vars and files around it for
-`.github/workflows/sensor.yml` and is deliberately not unit tested, the
-same convention ops_mcp/server.py's own `main()` follows.
+its only I/O is through the two injected CommandRunners (issue #4 AC).
+`_tick_and_report` wires real env vars/files around it for
+`.github/workflows/sensor.yml` and is deliberately not unit tested (same
+convention as ops_mcp/server.py's own `main()`); `main()` itself stays a
+thin wrapper but its sanitize-before-log error boundary (ADR-0003) is
+tested, since an unhandled traceback here would otherwise leak raw box
+output to the public Actions log.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 from ops_mcp.command_runner import CommandRunner, local_command_runner, ssh_command_runner
-from ops_mcp.sanitize import sanitize_value
+from ops_mcp.sanitize import sanitize_text, sanitize_value
 from ops_mcp.tools.vitals import get_vitals
 from sensor.decide import DEFAULT_DAILY_CAP_USD, DEFAULT_PER_INCIDENT_CAP_USD, decide
 from sensor.incidents import count_created_on, derive_armed_state, list_incidents
@@ -76,6 +80,20 @@ def run_tick(
 
 def main() -> None:
     host = os.environ.get("OPS_BOX_HOST")
+    try:
+        _tick_and_report(host)
+    except Exception as exc:
+        # ADR-0003: an unhandled exception's default traceback would print
+        # straight to the (public) Actions log — including a command's raw
+        # stderr, which is exactly the box-path/IP/host leak shape the
+        # sanitizer boundary exists to close. Report a sanitized one-liner
+        # and fail the step instead; SystemExit prints no traceback of its
+        # own, so nothing raw ever reaches the log.
+        print(f"sensor: tick failed: {sanitize_text(str(exc), host=host)}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def _tick_and_report(host: str | None) -> None:
     identity_file = os.environ.get("OPS_RO_SSH_KEY_PATH")
     user = os.environ.get("OPS_RO_SSH_USER", "ops-ro")
     missing = [

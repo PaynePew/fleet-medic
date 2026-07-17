@@ -9,8 +9,11 @@ from __future__ import annotations
 import json
 from datetime import date
 
+import pytest
+
 from ops_mcp.command_runner import CommandResult
 from ops_mcp.tools.vitals import DF_COMMAND, PS_IDS_COMMAND, inspect_command
+from sensor import main as sensor_main
 from sensor.main import INCIDENT_LABEL, run_tick
 
 TODAY = date(2026, 7, 18)
@@ -129,3 +132,24 @@ def test_run_tick_does_not_build_snapshot_when_not_spawning():
 
     assert result["decision"].should_spawn is False
     assert result["snapshot"] is None
+
+
+def test_main_sanitizes_an_unhandled_tick_failure_before_it_reaches_the_log(monkeypatch, capsys):
+    # ADR-0003: a raw exception traceback (e.g. `df` stderr with a box path)
+    # must never reach the public Actions log unsanitized. Simulate a tick
+    # failure that carries a real IP and assert only the sanitized form is
+    # ever printed.
+    monkeypatch.setenv("OPS_BOX_HOST", "box.example.com")
+
+    def boom(host):
+        raise RuntimeError("ssh to 10.0.0.5 failed: no route to host")
+
+    monkeypatch.setattr(sensor_main, "_tick_and_report", boom)
+
+    with pytest.raises(SystemExit) as exc_info:
+        sensor_main.main()
+
+    assert exc_info.value.code == 1
+    stderr = capsys.readouterr().err
+    assert "10.0.0.5" not in stderr
+    assert "[REDACTED-IP]" in stderr
