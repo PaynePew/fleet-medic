@@ -1,6 +1,6 @@
 # Coding Standards — fleet-medic
 
-> **Freshness**: last reconciled through **ADR-0003** (2026-07-18). 若 `project-docs/adr/`
+> **Freshness**: last reconciled through **ADR-0004** (2026-07-18). 若 `project-docs/adr/`
 > 有比這個戳記更新的 Accepted ADR,本檔即為過期(drift)——依 §0.3 reconcile。
 
 ## §0 本檔制度(meta)
@@ -32,7 +32,10 @@ CLAUDE.md 硬約束的審查條款化;reviewer 逐條對照 diff:
 - **LLM 不進輪詢迴圈**(ADR-0001):喚醒判斷/輪詢路徑出現任何模型呼叫 = critical。
 - **安全不外包給模型**:防呆(prune 不碰 in-use、脫敏、參數驗證)必須是工具內
   確定性 code,且各有失敗路徑測試。只寫在 prompt 裡 = 未實作。
-- **寫工具兩段式**:dry-run 先行 + confirm token;無(或錯誤)token 而能真執行 = critical。
+- **寫工具兩段式 + L2-gated apply**(ADR-0004):dry-run(讀,ops-ro)先產方案 + confirm
+  token(= 方案 digest + TTL);apply 只在 L2-gated(Environment reviewer)job 內以 ops-rw
+  執行,且**重驗前置**、方案漂移即拒;LLM 不與 ops-rw 同處。無/錯誤/過期 token 而能真執行,
+  或 apply 走非 gated 路徑用寫金鑰 = critical。
 - **工具輸出有界**:top-N / 截斷,且有測試斷言上界;無界輸出 = high。
 - **預算閘是確定性 code**:per-incident 與日上限用 code 數 token/計次,
   不是 prompt 叮嚀;超限行為(放棄+報告)有測試。
