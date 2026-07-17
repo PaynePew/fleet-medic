@@ -54,10 +54,10 @@ const buildPrompt = (i) => `你在一個隔離 git worktree 內,獨自負責 iss
 3) 自我精簡:再讀 ${CONFIG.promptsDir}/review.md 照做(對你的改動 in-place 精簡並 commit)。
 範圍紀律:只動這片需要的檔;絕不刪除/還原其他 slice 的成果、不刪 ADR/CONTEXT/CODING_STANDARDS、不刪既有測試。
 防污染護欄(違反即視為失敗):絕不 git init / 初始化任何 issue tracker、絕不新增 tracker/agent 鷹架(.beads/.agents/.codex/AGENTS.md)、絕不 commit 或改動 CLAUDE.md / .claude/settings.json / .gitignore。
-回傳:改了哪些檔、git diff ${CONFIG.baseBranch}..${i.branch} 檔案清單、ruff/pytest 是否全綠。`
+回傳:改了哪些檔、git diff ${CONFIG.baseBranch}...${i.branch} 檔案清單、ruff/pytest 是否全綠。`
 
 // verify:獨立、唯讀;嚴重度標記,只有 critical/high 擋 merge
-const verifyPrompt = (i) => `唯讀對抗式驗證 issue ${i.id}:執行 git diff ${CONFIG.baseBranch}..${i.branch},找「影響正確性、安全性或明確需求」的 bug,並對照 ${CONFIG.standards} 與相關 Accepted ADR 檢查違規。CLAUDE.md 的「硬約束」節違反=critical。
+const verifyPrompt = (i) => `唯讀對抗式驗證 issue ${i.id}:執行 git diff ${CONFIG.baseBranch}...${i.branch}(三點:只看這片相對 merge-base 的改動,不會把 base 在本片 fork 後新增的 commit 誤判成本片的「刪除/還原」),找「影響正確性、安全性或明確需求」的 bug,並對照 ${CONFIG.standards} 與相關 Accepted ADR 檢查違規。CLAUDE.md 的「硬約束」節違反=critical。
 範圍紀律(precision over recall):只回報有真實影響的 finding;風格偏好、假設性重構、與這片需求無關的改進建議一律不報。每個 blocker 必附 evidence——用具體管道證明(測試輸出、實際執行的回應、diff 中的具體行為);給不出證據的疑慮最高只能標 medium。
 若 diff 顯示它刪除/還原了既有成果(其他 slice、ADR、基礎設施),或新增了 .beads/.agents/.codex/AGENTS.md、動了 CLAUDE.md / .claude 設定(越界污染),標 critical(多半代表 base 拿錯或 agent 越界),evidence 寫出 diff 裡的具體檔案。
 每個 blocker 標 severity:critical/high=會壞/不安全/違反硬約束/刪到別人成果(擋 merge);medium/low=小毛病(回報不擋)。
@@ -73,7 +73,8 @@ ${String(r?.build ?? '(無摘要)').slice(0, 2000)}
 === /IMPLEMENTER ===
 === REVIEWER ===
 verdict=${r?.v?.verdict ?? 'n/a'};擋 merge 的 blocker ${(r?.blocking ?? []).length} 個。
-${JSON.stringify(r?.blocking ?? [], null, 2)}
+${JSON.stringify((r?.blocking ?? []).map(b => ({ file: b.file, line: b.line, severity: b.severity, issue: String(b.issue ?? '').slice(0, 200) })), null, 2)}
+(evidence 欄位刻意不貼:reviewer 的 evidence 可能含 exploit payload / 逐步重現,而 GitHub issue 是公開的——敏感細節留在 orchestrator 回傳與私下報告,不外洩到公開 repo。)
 === /REVIEWER ===
 
 只貼這一筆,不要做其他事。`
