@@ -56,6 +56,10 @@ def _parse_images(images_output: str) -> list[dict]:
             raise ValueError(f"unexpected `docker images` line: {line!r}")
         image_id, repository, tag, size = parts
         images.append({"id": image_id, "repository": repository, "tag": tag, "size": size})
+    # `docker images` only gives a docker-formatted size string (e.g.
+    # "118MB"), not raw bytes, so there's no numeric "biggest first" to sort
+    # by here — name order just keeps output (and the top_n cutoff below)
+    # deterministic across calls.
     images.sort(key=lambda img: (img["repository"], img["tag"], img["id"]))
     return images
 
