@@ -1,0 +1,77 @@
+# fleet-medic Sensor: scheduled df% / container-table / restart-count check
+# + Tripwire (ADR-0001 — deterministic, zero LLM calls in this workflow).
+# A trip hands the (sanitized) Anomaly Snapshot to a placeholder job — the
+# real Agent Loop is issue #6; this workflow only proves the sensor->agent
+# handoff (issue #4). See CONTEXT.md, ADR-0001/0002/0003.
+name: sensor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+# A stuck agent run must never overlap the next tick acting on the same
+# incident (roadmap.md arch-review #6) — one line of YAML instead of a
+# hand-rolled lock.
+concurrency:
+  group: sensor
+  cancel-in-progress: false
+
+jobs:
+  sense:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      should_spawn: ${{ steps.tick.outputs.should_spawn }}
+      reason: ${{ steps.tick.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Write ops-ro identity file
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/ops-ro"
+          printf '%s\n' "${{ secrets.OPS_RO_SSH_KEY }}" > "$RUNNER_TEMP/ops-ro"
+
+      - name: Run sensor tick
+        id: tick
+        env:
+          OPS_BOX_HOST: ${{ secrets.OPS_BOX_HOST }}
+          OPS_RO_SSH_KEY_PATH: ${{ runner.temp }}/ops-ro
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python -m sensor.main
+
+      - name: Upload Anomaly Snapshot
+        if: steps.tick.outputs.should_spawn == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: anomaly-snapshot
+          path: anomaly-snapshot.json
+          retention-days: 90
+
+  # Placeholder only — receives the handoff so the sensor->agent contract is
+  # exercised end to end. The real Agent Loop (tool-use, autonomy ladder) is
+  # issue #6 and is deliberately NOT built here (CLAUDE.md: agent loop 是
+  # 使用者親手寫/緊密結對的部分).
+  agent-placeholder:
+    needs: sense
+    if: needs.sense.outputs.should_spawn == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Receive Anomaly Snapshot
+        run: |
+          echo "Tripwire fired: ${{ needs.sense.outputs.reason }}"
+          echo "Agent Loop is not implemented yet (issue #6, ready-for-human)."
+          echo "This job only proves the sensor -> agent handoff contract (ADR-0001)."

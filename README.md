@@ -38,3 +38,16 @@ claude mcp add ops-mcp -- uv run --directory <repo 路徑> python -m ops_mcp.ser
 `OPS_RO_SSH_KEY_PATH`(選填 `OPS_RO_SSH_USER`,預設 `ops-ro`)才能真連線;
 `list_recent_deploys` 用本機已認證的 `gh`;`read_runbook` 純讀 repo 內檔案,
 免設定即可用。
+
+## Sensor(scheduled workflow)
+
+`.github/workflows/sensor.yml`(`sensor/`)每 15 分鐘以 `ops-ro` key 讀三數字
+(df% / 容器表 / restart count),零 LLM 呼叫(ADR-0001)。Tripwire(df>80%,
+跌破 75% 才重新武裝)越線且未被同類 open incident 去重、日 $5 預算閘未耗盡時,
+把脫敏後的異常快照(`ops_mcp/sanitize.py`,ADR-0003)交給一個佔位 job——
+真正的 Agent Loop 是 issue #6,尚未實作。
+
+```sh
+uv run python -m sensor.main   # 需 OPS_BOX_HOST + OPS_RO_SSH_KEY_PATH(+ gh 已認證)
+uv run pytest tests/test_sensor_*.py tests/test_sanitize.py
+```
