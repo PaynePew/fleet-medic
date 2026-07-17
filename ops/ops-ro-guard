@@ -1,0 +1,39 @@
+#!/bin/sh
+# fleet-medic ops-ro forced-command dispatcher (ADR-0002 read-only key).
+#
+# authorized_keys pins this via command="/usr/local/bin/ops-ro-guard"; the
+# client's real command arrives in $SSH_ORIGINAL_COMMAND. This is a
+# safety-critical boundary — it is version-controlled and tested here
+# (tests/test_ops_ro_guard.py), not left to live only beside authorized_keys
+# on the box (arch-review 2026-07-18, ADR-0003).
+#
+# Note on the channel: `ssh ... -- <argv>` flattens argv into one space-joined
+# string with no re-quoting, and this guard re-parses it via `sh -c`. So the
+# read tools must send commands with NO shell metacharacters and NO
+# whitespace-bearing arguments (e.g. use `::` field separators in --format,
+# never a literal TAB) — otherwise a value word-splits here. See ADR-0003.
+#
+# Set OPS_RO_GUARD_CHECK=1 to validate-only: print the decision and exit
+# without running anything (the tests use this so they never invoke docker).
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+
+reject() { echo "ops-ro: $1" >&2; exit 1; }
+allow() {
+  if [ -n "${OPS_RO_GUARD_CHECK:-}" ]; then echo "ALLOW"; exit 0; fi
+  exec /bin/sh -c "$cmd"
+}
+
+# No interactive shell: an empty command means someone ran `ssh ops-ro@box`.
+[ -n "$cmd" ] || reject "interactive shell is not permitted"
+
+# Reject anything that could chain or expand into a second command remotely.
+case "$cmd" in
+  *[\;\|\&\$\`\<\>\(\)]*) reject "shell metacharacter rejected" ;;
+esac
+
+# Read-only allowlist: only these diagnostic prefixes. Tighten to exactly what
+# the ops-mcp read tools send before relying on this in production.
+case "$cmd" in
+  "docker logs "*|"docker inspect "*|"docker ps"*|"docker system df"*|"df "*|"du "*) allow ;;
+  *) reject "command not in read-only allowlist" ;;
+esac

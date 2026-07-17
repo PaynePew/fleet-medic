@@ -9,8 +9,9 @@ import pytest
 from ops_mcp.command_runner import CommandResult
 from ops_mcp.tools.vitals import (
     DF_COMMAND,
-    INSPECT_COMMAND,
+    PS_IDS_COMMAND,
     get_vitals,
+    inspect_command,
 )
 
 DF_OUTPUT = (
@@ -21,20 +22,27 @@ DF_OUTPUT = (
 
 def _inspect_line(name: str, running: bool, restarts: int) -> str:
     status = "running" if running else "exited"
-    return f"/{name}\t{status}\t{restarts}"
+    return f"/{name}::{status}::{restarts}"
+
+
+def _script_containers(responses, services: list[tuple[str, bool, int]]) -> None:
+    """Script `docker ps -aq` + the matching `docker inspect` for `services`."""
+    ids = [f"id{i}" for i in range(len(services))]
+    responses[tuple(PS_IDS_COMMAND)] = CommandResult(
+        stdout=("\n".join(ids) + "\n" if ids else ""), stderr="", returncode=0
+    )
+    if ids:
+        responses[tuple(inspect_command(ids))] = CommandResult(
+            stdout="\n".join(_inspect_line(n, r, c) for n, r, c in services),
+            stderr="",
+            returncode=0,
+        )
 
 
 def test_get_vitals_happy_parses_disk_percent_and_services(scripted_runner):
     runner, responses = scripted_runner
     responses[tuple(DF_COMMAND)] = CommandResult(stdout=DF_OUTPUT, stderr="", returncode=0)
-    responses[tuple(INSPECT_COMMAND)] = CommandResult(
-        stdout="\n".join([
-            _inspect_line("ask-wiki-rag", True, 0),
-            _inspect_line("edge", True, 2),
-        ]),
-        stderr="",
-        returncode=0,
-    )
+    _script_containers(responses, [("ask-wiki-rag", True, 0), ("edge", True, 2)])
 
     result = get_vitals(runner)
 
@@ -48,15 +56,11 @@ def test_get_vitals_happy_parses_disk_percent_and_services(scripted_runner):
 def test_get_vitals_sorts_worst_first(scripted_runner):
     runner, responses = scripted_runner
     responses[tuple(DF_COMMAND)] = CommandResult(stdout=DF_OUTPUT, stderr="", returncode=0)
-    responses[tuple(INSPECT_COMMAND)] = CommandResult(
-        stdout="\n".join([
-            _inspect_line("healthy-quiet", True, 0),
-            _inspect_line("crash-looping", False, 9),
-            _inspect_line("healthy-flaky", True, 3),
-        ]),
-        stderr="",
-        returncode=0,
-    )
+    _script_containers(responses, [
+        ("healthy-quiet", True, 0),
+        ("crash-looping", False, 9),
+        ("healthy-flaky", True, 3),
+    ])
 
     result = get_vitals(runner)
 
@@ -69,17 +73,28 @@ def test_get_vitals_sorts_worst_first(scripted_runner):
 def test_get_vitals_bounds_services_to_top_n(scripted_runner):
     runner, responses = scripted_runner
     responses[tuple(DF_COMMAND)] = CommandResult(stdout=DF_OUTPUT, stderr="", returncode=0)
-    responses[tuple(INSPECT_COMMAND)] = CommandResult(
-        stdout="\n".join(_inspect_line(f"svc-{i}", True, i) for i in range(30)),
-        stderr="",
-        returncode=0,
-    )
+    _script_containers(responses, [(f"svc-{i}", True, i) for i in range(30)])
 
     result = get_vitals(runner, top_n=20)
 
     assert len(result["services"]) == 20
     assert result["services_total"] == 30
     assert result["services_truncated"] == 10
+
+
+def test_get_vitals_returns_empty_services_on_zero_container_box(scripted_runner):
+    # `docker ps -aq` empty → skip inspect entirely (not scripted, so calling
+    # it would fail the test) and return disk% with an empty service list.
+    runner, responses = scripted_runner
+    responses[tuple(DF_COMMAND)] = CommandResult(stdout=DF_OUTPUT, stderr="", returncode=0)
+    _script_containers(responses, [])
+
+    result = get_vitals(runner)
+
+    assert result["disk_percent"] == 89.0
+    assert result["services"] == []
+    assert result["services_total"] == 0
+    assert result["services_truncated"] == 0
 
 
 def test_get_vitals_raises_clearly_when_df_fails(scripted_runner):

@@ -9,10 +9,10 @@ from ops_mcp.command_runner import CommandResult
 from ops_mcp.tools.disk import DOCKER_DF_COMMAND, DU_COMMAND, disk_breakdown
 
 DOCKER_DF_OUTPUT = (
-    "Images\t12\t4\t6.2GB\t4.8GB (77%)\n"
-    "Containers\t4\t4\t120MB\t0B (0%)\n"
-    "Local Volumes\t3\t1\t540MB\t400MB (74%)\n"
-    "Build Cache\t0\t0\t0B\t0B\n"
+    "Images::12::4::6.2GB::4.8GB (77%)\n"
+    "Containers::4::4::120MB::0B (0%)\n"
+    "Local Volumes::3::1::540MB::400MB (74%)\n"
+    "Build Cache::0::0::0B::0B\n"
 )
 
 

@@ -9,9 +9,13 @@ from ops_mcp.bounds import DEFAULT_TOP_N, take_top_n
 from ops_mcp.command_runner import CommandRunner, run_checked
 
 DU_COMMAND = ["du", "-x", "-b", "--max-depth=2", "/"]
+# `::` field separator, not a TAB: a TAB in this --format argument would
+# word-split in the ops-ro guard's `sh -c` re-parse (ADR-0003). (`du`'s own
+# output below is genuinely TAB-separated and unaffected — that's stdout, not
+# a command argument.)
 DOCKER_DF_COMMAND = [
     "docker", "system", "df", "--format",
-    "{{.Type}}\t{{.TotalCount}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}",
+    "{{.Type}}::{{.TotalCount}}::{{.Active}}::{{.Size}}::{{.Reclaimable}}",
 ]
 
 _UNITS = ("B", "K", "M", "G", "T")
@@ -46,7 +50,7 @@ def _parse_docker_system_df(df_output: str) -> list[dict]:
         line = line.strip()
         if not line:
             continue
-        parts = line.split("\t")
+        parts = line.split("::")
         if len(parts) != 5:
             raise ValueError(f"unexpected `docker system df` line: {line!r}")
         type_, total, active, size, reclaimable = parts

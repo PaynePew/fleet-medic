@@ -87,7 +87,7 @@ def test_disk_breakdown_uses_the_injected_runner(monkeypatch):
     def fake_runner(command):
         if command[0] == "du":
             return CommandResult(stdout="1000\t/var/lib/docker\n", stderr="", returncode=0)
-        return CommandResult(stdout="Images\t1\t1\t1B\t0B\n", stderr="", returncode=0)
+        return CommandResult(stdout="Images::1::1::1B::0B\n", stderr="", returncode=0)
 
     monkeypatch.setattr(server, "_ssh_runner", lambda: fake_runner)
 
