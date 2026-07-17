@@ -4,16 +4,25 @@ Agent's context (CLAUDE.md: 工具輸出一律有界)."""
 
 from __future__ import annotations
 
+import re
+
 from ops_mcp.command_runner import CommandRunner, run_checked
 
+# `service` is boundary input from the LLM and the command crosses an ssh hop
+# where the remote shell re-parses it, so it is restricted to a bare docker
+# name before it reaches the seam — no shell metachars, no leading dash that
+# `docker logs` would parse as an option (same pattern as runbook.py's topic).
+_SERVICE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 MAX_TAIL_LINES = 500
 DEFAULT_TAIL_LINES = 200
 
 
 def tail_logs(runner: CommandRunner, service: str, lines: int = DEFAULT_TAIL_LINES) -> dict:
     """Return the last `lines` (hard-capped at MAX_TAIL_LINES) log lines for `service`."""
-    if not service or not service.strip():
-        raise ValueError("tail_logs: service must be a non-empty container/service name")
+    if not service or not _SERVICE_RE.match(service):
+        raise ValueError(
+            f"tail_logs: service must match {_SERVICE_RE.pattern!r}, got {service!r}"
+        )
     bounded_lines = min(max(lines, 1), MAX_TAIL_LINES)
 
     command = ["docker", "logs", "--tail", str(bounded_lines), "--timestamps", service]
