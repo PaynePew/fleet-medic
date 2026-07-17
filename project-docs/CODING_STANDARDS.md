@@ -1,6 +1,6 @@
 # Coding Standards — fleet-medic
 
-> **Freshness**: last reconciled through **ADR-0002** (2026-07-11). 若 `project-docs/adr/`
+> **Freshness**: last reconciled through **ADR-0003** (2026-07-18). 若 `project-docs/adr/`
 > 有比這個戳記更新的 Accepted ADR,本檔即為過期(drift)——依 §0.3 reconcile。
 
 ## §0 本檔制度(meta)
@@ -38,6 +38,12 @@ CLAUDE.md 硬約束的審查條款化;reviewer 逐條對照 diff:
   不是 prompt 叮嚀;超限行為(放棄+報告)有測試。
 - **Sensor 只答封閉問題**:往 sensor 加開放式判斷(診斷 if-else 樹之外的推理)
   = 漂移訊號,flag 之(ADR-0001 Consequences)。
+- **公開面輸出脫敏**(ADR-0003):凡離開 box 進入公開面(Actions log / artifact /
+  Run Ledger)的工具輸出,必須過共用 sanitizer 邊界層——脫敏是確定性 code,與「安全
+  不外包給模型」同位階。只在單一報告工具脫敏、其餘公開面裸奔未過邊界層 = high。
+- **L3 白名單條件是確定性謂詞**:入白名單的(行動,條件)對,其條件必須由工具/executor
+  確定性重驗,模型只提名行動不自證條件成立(CONTEXT.md 白名單對不變量)。模型自證條件
+  = 把租戶可控資料接上無人閘行動 = critical。
 
 ## §2 工具鏈
 
@@ -51,6 +57,8 @@ CLAUDE.md 硬約束的審查條款化;reviewer 逐條對照 diff:
   未處理的案例是 finding。
 - 不吞錯:不 swallow exception、不用預設值掩蓋呼叫方需要知道的失敗。
 - 邊界驗證在邊緣(使用者輸入、SSH/shell 輸出解析、LLM 回應解析);內部呼叫互信。
+- 送往受限唯讀 SSH 通道的指令必須 metachar-free、無內嵌空白參數(通道把 argv
+  flatten 後經 `sh -c` 重解析;見 ADR-0003)——`--format` 類用非空白欄位分隔。
 - 錯誤訊息要說「什麼壞了 + 什麼輸入/狀態導致」,單看 log 行可診斷。
 - 失敗路徑也要清資源(context manager / try-finally 優於手動清理)。
 

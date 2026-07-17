@@ -45,6 +45,7 @@ _Avoid_: permission levels、trust score
 
 **Whitelist Pair(白名單對)**:
 L3 自治的最小單位:(行動, 條件)的配對,而非行動本身。「在 df>80% 且無 running 容器受影響時 prune images」可入白名單;「prune」本身永遠不行。
+_不變量(承 arch-review 2026-07-18 #2)_:**條件必須是工具/executor 內確定性重驗的謂詞;模型只提名行動,不自證條件成立**。否則模型讀進的租戶可控資料(如 tail_logs)在 L3 無人閘下就成了 prompt-injection → 行動的通道。prune 的「不碰 in-use」防呆已是此 pattern,通則化到整個 ladder。
 
 **Run Ledger(運行帳)**:
 Agent 每次運行的完整 JSONL 軌跡(工具呼叫、參數、結果、決策),落盤供回放與評分。

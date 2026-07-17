@@ -41,6 +41,26 @@ CONTEXT.md 首批詞彙(Sensor / Tripwire / 異常快照 / Autonomy ladder / 白
 - tool 輸出一律有界(top-N/截斷),否則 agent context 會被 log dump 塞爆。
 - prune 防呆:永不碰 running containers 的 image;dry-run 與真執行是兩個呼叫。
 
+**arch-review 2026-07-18 設計輸入(已 triage;細節見 coord-vault
+`handoffs/fleet-medic-arch-review-2026-07-18.md`,決議 #1→ADR-0003)**:
+- 公開面輸出脫敏(#1 / ADR-0003):離開 box 進 Actions log / artifact / Run Ledger 的
+  工具輸出過共用 sanitizer 邊界層(不只 report 工具);`OPS_BOX_HOST` 設 GitHub secret 拿 log masking。
+- 誰感測感測器(#4,sensor slice):sensor 每跑完 ping dead-man's switch(healthchecks.io 免費);
+  公開 repo 的 scheduled workflow 60 天無活動自動停用,要盯——訊號缺席 ≠ 健康。
+- tripwire 遲滯 + incident 去重(#5,sensor slice):spawn 前 `gh` 查同類 open incident 有則抑制
+  (Actions 無狀態,issue 即免費狀態儲存);80 絆線、跌破 75 才重新武裝,防門檻震盪。
+- Actions concurrency(#6,sensor slice):`concurrency` group + `cancel-in-progress: false`,
+  防卡住的 agent run 與下一 tick 並行動同一 incident(一行 YAML)。
+- confirm token 綁定(#3,寫工具 slice / #7):token = dry-run 方案摘要 digest + TTL,真執行時
+  工具重驗前置條件、方案漂移即拒絕要求重 dry-run(防 dry-run→批准→執行的 TOCTOU 窗)。
+- 白名單條件不變量(#2):條件必須是工具內確定性重驗的謂詞,模型不自證——見 CONTEXT.md「白名單對」。
+- prompt cache 紀律(#7,loop slice / Max 親寫):incident 內 system prompt 與 tool 定義 byte-stable、
+  對話 append-only、快照放第一個 user message;per-incident $1 閘的實際 turn 容量取決於 cache 命中。
+- eval 統計效力(#8a,Phase 3):「誤行動率 ≤ 單 agent」3 場景無統計效力,需場景庫擴充或多 seed 重跑。
+- SSH host key(#8c):workflow 裡 pin host key(`accept-new` 在 ephemeral runner 上等於每次 TOFU)。
+- ops-ro 通道約束(#8b / ADR-0003):forced-command guard 已入 repo 版控 + 測試(`ops/ops-ro-guard`);
+  送往該通道的指令不得含 shell metachar、不得有內嵌空白參數。
+
 ## Phase 2 — 驗證與升級機制 + Showcase 包裝
 
 - Chaos eval suite:把 Phase 1 的三種注入正式化成可重跑的 eval(場景庫 + 判分)。
