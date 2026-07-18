@@ -1,7 +1,8 @@
 """ops_mcp.server: the FastMCP app Claude Code (or any MCP client) mounts
-directly — verifies all five read tools register with real descriptions
-(描述即 prompt) and are actually callable through the MCP protocol layer,
-not just as plain Python functions."""
+directly — verifies every Tool Belt tool (read + write + report, CONTEXT.md
+分讀/寫/報三層) registers with a real description (描述即 prompt) and is
+actually callable through the MCP protocol layer, not just as a plain
+Python function."""
 
 from __future__ import annotations
 
@@ -20,6 +21,9 @@ EXPECTED_TOOLS = {
     "tail_logs",
     "list_recent_deploys",
     "read_runbook",
+    "prune_images",
+    "rotate_logs",
+    "file_incident_report",
 }
 
 
@@ -28,7 +32,7 @@ def _call(tool_name: str, arguments: dict | None = None) -> dict:
     return json.loads(blocks[0].text)
 
 
-def test_all_five_read_tools_are_registered_with_real_descriptions():
+def test_all_tool_belt_tools_are_registered_with_real_descriptions():
     tools = asyncio.run(server.mcp.list_tools())
     names = {t.name for t in tools}
     assert names == EXPECTED_TOOLS
@@ -106,3 +110,94 @@ def test_list_recent_deploys_uses_the_local_runner(monkeypatch):
     result = _call("list_recent_deploys")
 
     assert result == {"deploys": [], "count_returned": 0, "truncated": False}
+
+
+def test_rw_ssh_runner_raises_clearly_without_env(monkeypatch):
+    monkeypatch.delenv("OPS_RW_SSH_KEY_PATH", raising=False)
+    server._rw_ssh_runner.cache_clear()
+
+    with pytest.raises(RuntimeError, match="OPS_RW_SSH_KEY_PATH"):
+        server._rw_ssh_runner()
+
+
+def test_prune_images_dry_run_uses_the_read_only_runner(monkeypatch):
+    def fake_ro_runner(command):
+        return CommandResult(stdout="", stderr="", returncode=0)
+
+    def fake_rw_runner(command):
+        raise AssertionError("dry_run must never touch the rw runner")
+
+    monkeypatch.setattr(server, "_ssh_runner", lambda: fake_ro_runner)
+    monkeypatch.setattr(server, "_rw_ssh_runner", lambda: fake_rw_runner)
+
+    result = _call("prune_images", {"dry_run": True})
+
+    assert result["dry_run"] is True
+    assert "confirm_token" in result
+
+
+def test_prune_images_apply_without_rw_env_fails_closed(monkeypatch):
+    def fake_ro_runner(command):
+        return CommandResult(stdout="", stderr="", returncode=0)
+
+    monkeypatch.setattr(server, "_ssh_runner", lambda: fake_ro_runner)
+    monkeypatch.delenv("OPS_RW_SSH_KEY_PATH", raising=False)
+    server._rw_ssh_runner.cache_clear()
+
+    with pytest.raises(ToolError, match="OPS_RW_SSH_KEY_PATH"):
+        _call("prune_images", {"dry_run": False, "confirm_token": "bogus:1.0"})
+
+
+def test_prune_images_apply_uses_the_rw_runner_with_a_valid_token(monkeypatch):
+    def fake_ro_runner(command):
+        return CommandResult(stdout="", stderr="", returncode=0)
+
+    monkeypatch.setattr(server, "_ssh_runner", lambda: fake_ro_runner)
+    dry_run_result = _call("prune_images", {"dry_run": True})
+
+    monkeypatch.setattr(server, "_rw_ssh_runner", lambda: fake_ro_runner)
+    result = _call(
+        "prune_images", {"dry_run": False, "confirm_token": dry_run_result["confirm_token"]}
+    )
+
+    assert result["dry_run"] is False
+    assert result["removed_image_ids"] == []
+
+
+def test_rotate_logs_uses_the_injected_runners(monkeypatch):
+    _log = "/var/lib/docker/containers/edge/edge-json.log"
+
+    def fake_ro_runner(command):
+        if command[:2] == ["docker", "inspect"]:
+            return CommandResult(stdout=f"{_log}\n", stderr="", returncode=0)
+        return CommandResult(stdout=f"1000\t{_log}\n", stderr="", returncode=0)
+
+    monkeypatch.setattr(server, "_ssh_runner", lambda: fake_ro_runner)
+
+    result = _call("rotate_logs", {"service": "edge", "dry_run": True})
+
+    assert result["service"] == "edge"
+    assert result["reclaim_bytes"] == 1000
+    assert "confirm_token" in result
+
+
+def test_file_incident_report_uses_the_local_gh_runner(monkeypatch):
+    def fake_runner(command):
+        assert command[0:3] == ["gh", "issue", "create"]
+        return CommandResult(stdout="https://example/issues/1\n", stderr="", returncode=0)
+
+    monkeypatch.setattr(server, "_gh_runner", lambda: fake_runner)
+
+    result = _call(
+        "file_incident_report",
+        {
+            "detection": "disk_percent hit 92%",
+            "hypothesis": "superseded images",
+            "action": "pruned after approval",
+            "verification": "disk_percent back to 60%",
+            "residual_risk": "none observed",
+        },
+    )
+
+    assert result["url"] == "https://example/issues/1"
+    assert result["label"] == "incident:disk-full"

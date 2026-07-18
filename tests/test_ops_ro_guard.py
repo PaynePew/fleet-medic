@@ -56,6 +56,15 @@ REJECTED = [
     ("docker inspect foo && rm -rf /", "metacharacter"),
     ("cat /etc/shadow", "allowlist"),
     ("rm -rf /tmp/x", "allowlist"),
+    # a second line would ride through `sh -c` past the allowlist prefixes
+    ("docker logs --tail 5 edge\nrm -rf /tmp/x", "control whitespace"),
+    ("df -P /\treboot", "control whitespace"),
+    ("df -P /\rreboot", "control whitespace"),
+    # a glob re-expands when `sh -c` runs the command — no read tool sends one
+    ("du -b /var/lib/docker/*", "metacharacter"),
+    # quotes/backslash are stripped by `sh -c` after validation sees them
+    ('du -x -b --max-depth=2 /a/.""./etc', "quote or backslash"),
+    ("df -P /a/.\\./etc", "quote or backslash"),
 ]
 
 
