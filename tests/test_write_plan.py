@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from ops_mcp.write_plan import (
+    DEFAULT_TOKEN_TTL_SECONDS,
     ConfirmToken,
     compute_plan_digest,
     issue_confirm_token,
@@ -48,6 +49,18 @@ def test_verify_rejects_expired_token():
     token = issue_confirm_token(PLAN, ttl_seconds=60, now=1_000.0)
     with pytest.raises(ValueError, match="expired"):
         verify_confirm_token(token, PLAN, now=1_000.0 + 61)
+
+
+def test_default_ttl_window_is_thirty_minutes():
+    # Pins the #13 PAIR tuning (15 -> 30 min): a plan approved just inside the
+    # window still applies; just outside is refused. Guards against an
+    # accidental revert of the default that unit tests would otherwise miss.
+    token = issue_confirm_token(PLAN, now=1_000.0)
+    assert ConfirmToken.decode(token).expires_at == 1_000.0 + DEFAULT_TOKEN_TTL_SECONDS
+    assert DEFAULT_TOKEN_TTL_SECONDS == 1800
+    verify_confirm_token(token, PLAN, now=1_000.0 + 1800 - 1)  # just inside
+    with pytest.raises(ValueError, match="expired"):
+        verify_confirm_token(token, PLAN, now=1_000.0 + 1800 + 1)  # just outside
 
 
 def test_verify_rejects_drifted_plan():

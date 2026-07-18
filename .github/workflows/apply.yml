@@ -5,9 +5,10 @@
 # plan — the write tool re-verifies fresh box state and refuses on drift or
 # expiry (write_plan.py), so approval is never a blank check.
 #
-# DRAFT for pairing review (handoff 2026-07-18: #13 配對做). Open decision
-# points are marked "PAIR:" inline. Until #6 lands, dispatch is manual: run a
-# write tool's dry-run over MCP, paste the confirm_token here, approve the
+# Both #13 pairing decisions are now resolved: the confirm-token TTL is tuned
+# to 30 min (write_plan.py, vs approval latency) and the box host key is
+# pinned below (no more per-run TOFU). Until #6 lands, dispatch is manual: run
+# a write tool's dry-run over MCP, paste the confirm_token here, approve the
 # environment gate. #6's Agent Loop later produces the plan + token as an
 # artifact instead of a human pasting it.
 name: apply
@@ -40,11 +41,11 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    # PAIR: TTL tension — write_plan's confirm token expires 15 min after the
-    # dry-run, and the environment reviewer may approve later than that. An
-    # expired-but-approved apply fails closed (re-run dry-run, re-approve),
-    # which is safe but may be annoying; tune DEFAULT_TOKEN_TTL_SECONDS vs
-    # approval latency deliberately, don't discover it in an incident.
+    # The confirm token expires 30 min after the dry-run (write_plan.py,
+    # tuned from 15 for approval latency). If the environment reviewer
+    # approves later than that, apply fails closed — re-run dry-run for a
+    # fresh token and re-approve; drift re-verification, not the TTL, is the
+    # primary staleness guard.
     environment: box-mutations
     permissions:
       contents: read
@@ -69,10 +70,25 @@ jobs:
           install -m 600 /dev/null "$RUNNER_TEMP/ops-rw"
           printf '%s\n' "$OPS_RW_SSH_KEY" > "$RUNNER_TEMP/ops-rw"
 
-      # PAIR: like sensor.yml this rides StrictHostKeyChecking=accept-new,
-      # which on an ephemeral runner is TOFU every run (roadmap #8c) — worth
-      # fixing for the write path first (pin the host key here) before, or
-      # alongside, wiring the box-side ops-rw-guard.
+      # Pin the box host key so this write path never trusts-on-first-use
+      # (#13 PAIR / roadmap #8c). The runner's known_hosts starts empty, so
+      # accept-new would TOFU every run; pre-writing the known-good key makes
+      # accept-new verify against it and refuse a mismatched (MITM) host
+      # instead. OPS_BOX_HOST_KEY is a repo *variable* (a public host key,
+      # not a secret). Fail closed if it's unset — better to abort a write
+      # run than to silently fall back to TOFU.
+      - name: Pin box host key
+        env:
+          OPS_BOX_HOST_KEY: ${{ vars.OPS_BOX_HOST_KEY }}
+        run: |
+          if [ -z "$OPS_BOX_HOST_KEY" ]; then
+            echo "OPS_BOX_HOST_KEY variable is not set — refusing to run apply without a pinned host key" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$OPS_BOX_HOST_KEY" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
       - name: Apply approved plan
         env:
           OPS_BOX_HOST: ${{ secrets.OPS_BOX_HOST }}
