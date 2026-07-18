@@ -21,12 +21,21 @@
 cmd="${SSH_ORIGINAL_COMMAND:-}"
 
 reject() { echo "ops-rw: $1" >&2; exit 1; }
-allow() {
-  if [ -n "${OPS_RW_GUARD_CHECK:-}" ]; then echo "ALLOW"; exit 0; fi
+
+# _run executes (or, in check mode, reports) one effective command. allow()
+# runs the client command as-is; allow_root() prepends `sudo -n` for the two
+# whitelisted FS ops that must touch root-owned docker state (du a log's
+# size, truncate it) — ADR-0005. The docker socket ops need no sudo. Check
+# mode prints the *effective* command so a test can assert which branch got
+# sudo and which did not.
+_run() {  # $1 = effective command string
+  if [ -n "${OPS_RW_GUARD_CHECK:-}" ]; then echo "ALLOW: $1"; exit 0; fi
   # -f: a glob that survived validation as one argv word must not re-expand
   # into many at execution (the checks below counted words with globbing off).
-  exec /bin/sh -f -c "$cmd"
+  exec /bin/sh -f -c "$1"
 }
+allow()      { _run "$cmd"; }
+allow_root() { _run "sudo -n $cmd"; }
 
 # No interactive shell: an empty command means someone ran `ssh ops-rw@box`.
 [ -n "$cmd" ] || reject "interactive shell is not permitted"
@@ -74,7 +83,7 @@ case "$cmd" in
   "du -b /var/lib/docker/containers/"?*)
     [ $# -eq 3 ] || reject "du takes exactly one path"
     case "$3" in *..*) reject "path traversal rejected" ;; esac
-    allow ;;
+    allow_root ;;
   # The two write shapes (prune_images / rotate_logs apply).
   "docker image rm sha256:"?*)
     shift 3
@@ -88,6 +97,6 @@ case "$cmd" in
   "truncate -s 0 /var/lib/docker/containers/"?*)
     [ $# -eq 4 ] || reject "truncate takes exactly one path"
     case "$4" in *..*) reject "path traversal rejected" ;; esac
-    allow ;;
+    allow_root ;;
   *) reject "command not in ops-rw allowlist" ;;
 esac

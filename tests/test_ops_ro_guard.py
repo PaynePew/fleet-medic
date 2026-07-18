@@ -46,6 +46,11 @@ ALLOWED = [
     "docker logs --tail 200 --timestamps ask-wiki-rag",
     "docker inspect --format {{.Name}}::{{.State.Status}}::{{.RestartCount}} abc123 def456",
     "docker system df --format {{.Type}}::{{.TotalCount}}::{{.Active}}::{{.Size}}::{{.Reclaimable}}",
+    # prune_images' dry-run reads the image inventory over the ops-ro key
+    # (ADR-0005 added this to unblock it).
+    "docker images --no-trunc --format {{.ID}}::{{.Repository}}::{{.Tag}}::{{.Size}}",
+    # rotate_logs' dry-run sizes a container's json log (runs sudo'd below).
+    "du -b /var/lib/docker/containers/abc/abc-json.log",
 ]
 
 REJECTED = [
@@ -65,6 +70,10 @@ REJECTED = [
     # quotes/backslash are stripped by `sh -c` after validation sees them
     ('du -x -b --max-depth=2 /a/.""./etc', "quote or backslash"),
     ("df -P /a/.\\./etc", "quote or backslash"),
+    # the sudo'd containers-du is tightened (a second path would let sudo read
+    # any root file); traversal and multi-path are refused before sudo (ADR-0005)
+    ("du -b /var/lib/docker/containers/../../etc/passwd", "traversal"),
+    ("du -b /var/lib/docker/containers/a.log /etc/shadow", "exactly one"),
 ]
 
 
@@ -72,7 +81,8 @@ REJECTED = [
 def test_guard_allows_read_only_commands(command):
     result = _decide(command)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "ALLOW"
+    # Check mode reports "ALLOW: <effective command>" (ADR-0005).
+    assert result.stdout.strip().startswith("ALLOW")
 
 
 @pytest.mark.parametrize("command,reason", REJECTED)
@@ -80,3 +90,22 @@ def test_guard_rejects(command, reason):
     result = _decide(command)
     assert result.returncode != 0
     assert reason in result.stderr
+
+
+def test_containers_du_runs_via_sudo():
+    # Only the root-owned docker json log path needs privilege (ADR-0005).
+    cmd = "du -b /var/lib/docker/containers/abc/abc-json.log"
+    assert _decide(cmd).stdout.strip() == f"ALLOW: sudo -n {cmd}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "du -x -b --max-depth=2 /",  # disk_breakdown's general du stays unprivileged
+        "df -P /",
+        "docker ps -aq",
+        "docker images --no-trunc --format {{.ID}}::{{.Repository}}::{{.Tag}}::{{.Size}}",
+    ],
+)
+def test_general_reads_do_not_use_sudo(command):
+    assert "sudo" not in _decide(command).stdout

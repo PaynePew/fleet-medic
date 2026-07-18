@@ -43,3 +43,21 @@ To deploy to a box:
 scp ops/ops-rw-guard <admin>@<box>:/tmp/ops-rw-guard
 ssh <admin>@<box> "sudo install -o root -g root -m 755 /tmp/ops-rw-guard /usr/local/bin/ops-rw-guard && rm /tmp/ops-rw-guard"
 ```
+
+## `sudoers.d/fleet-medic-ops`
+
+NOPASSWD sudo scoped to exactly the write-path filesystem ops the guards run
+(ADR-0005). Docker's json logs live under `/var/lib/docker/containers`
+(`root:root drwx------`), so the unprivileged `ops-ro`/`ops-rw` accounts
+cannot `du`/`truncate` them directly; the guards run those two shapes via
+`sudo -n`, and this file is the box-side grant that allows it. The guards
+remain the real boundary (they reject `..` and enforce a single path before
+sudo is ever reached); this is the argv-pinned second layer.
+
+**This file is the source of truth.** Validate before installing (a bad
+sudoers file can lock out sudo):
+
+```sh
+scp ops/sudoers.d/fleet-medic-ops <admin>@<box>:/tmp/fleet-medic-ops
+ssh <admin>@<box> "sudo visudo -cf /tmp/fleet-medic-ops && sudo install -o root -g root -m 440 /tmp/fleet-medic-ops /etc/sudoers.d/fleet-medic-ops && rm /tmp/fleet-medic-ops"
+```
