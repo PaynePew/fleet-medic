@@ -53,6 +53,13 @@ CONTEXT.md 首批詞彙(Sensor / Tripwire / 異常快照 / Autonomy ladder / 白
   防卡住的 agent run 與下一 tick 並行動同一 incident(一行 YAML)。
 - confirm token 綁定(#3,寫工具 slice / #7):token = dry-run 方案摘要 digest + TTL,真執行時
   工具重驗前置條件、方案漂移即拒絕要求重 dry-run(防 dry-run→批准→執行的 TOCTOU 窗)。
+- 批准空窗 vs 目標穩定性(#6,loop slice / 2026-07-18 #13 e2e 實證):dry-run→人批准→apply 這個模型
+  隱含假設「目標在批准空窗內穩定」。confirm token 綁死 (service, log_path),所以兩種情況會**正確**
+  drift 被拒:(a) token **串味**——拿別的 service 的 token 去 apply;(b) token **放久**——容器在空窗內
+  被重建、log_path 變了。手動 dispatch 已實際踩到(mcp-server 兩次 drift;同一 shell 產 fresh token +
+  即批准即過)。→ #6 的迴圈設計要吃這條:token 產生與 apply 在**同一段自動流程內、空窗最短化**;
+  token↔service 綁定由 code 維護、不靠人手貼;drift 時**自動重 dry-run** 而非放棄(重 dry-run 是正常
+  路徑,不是錯誤)。這也是「把人手空窗換成機器迴圈」本身的價值論證之一。
 - 白名單條件不變量(#2):條件必須是工具內確定性重驗的謂詞,模型不自證——見 CONTEXT.md「白名單對」。
 - prompt cache 紀律(#7,loop slice / Max 親寫):incident 內 system prompt 與 tool 定義 byte-stable、
   對話 append-only、快照放第一個 user message;per-incident $1 閘的實際 turn 容量取決於 cache 命中。
