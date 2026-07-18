@@ -1,0 +1,80 @@
+#!/bin/sh
+# fleet-medic ops-rw forced-command dispatcher (ADR-0002 write key; ADR-0004
+# Option A gated apply; issue #13).
+#
+# authorized_keys pins this via command="/usr/local/bin/ops-rw-guard"; the
+# client's real command arrives in $SSH_ORIGINAL_COMMAND. Same
+# version-controlled + tested pattern as ops-ro-guard (arch-review
+# 2026-07-18, ADR-0003), but the allowlist is intentionally NARROWER: only
+# the exact argv the write tools' apply mode sends — their fresh-state
+# re-verification reads plus the two write shapes. General diagnosis reads
+# ride the ops-ro key, never this one.
+#
+# Same channel constraint as ops-ro-guard: `ssh ... -- <argv>` flattens argv
+# into one space-joined string and this guard re-parses it via `sh -c`, so
+# the tools must send commands with NO shell metacharacters and NO
+# whitespace-bearing arguments (ADR-0003; rotate.py validates {{.LogPath}}
+# before it becomes argv for exactly this reason).
+#
+# Set OPS_RW_GUARD_CHECK=1 to validate-only: print the decision and exit
+# without running anything (the tests use this).
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+
+reject() { echo "ops-rw: $1" >&2; exit 1; }
+allow() {
+  if [ -n "${OPS_RW_GUARD_CHECK:-}" ]; then echo "ALLOW"; exit 0; fi
+  exec /bin/sh -c "$cmd"
+}
+
+# No interactive shell: an empty command means someone ran `ssh ops-rw@box`.
+[ -n "$cmd" ] || reject "interactive shell is not permitted"
+
+# Reject anything that could chain or expand into a second command remotely.
+case "$cmd" in
+  *[\;\|\&\$\`\<\>\(\)]*) reject "shell metacharacter rejected" ;;
+esac
+
+# A newline/tab/CR inside the flattened command could smuggle a second line
+# past the prefix patterns below (`sh -c` runs every line) — reject outright.
+nl=$(printf '\nx'); nl=${nl%x}
+tab=$(printf '\tx'); tab=${tab%x}
+cr=$(printf '\rx'); cr=${cr%x}
+case "$cmd" in
+  *"$nl"* | *"$tab"* | *"$cr"*) reject "control whitespace rejected" ;;
+esac
+
+# Word-split exactly the way allow()'s `sh -c` will (globbing off), so the
+# per-argument checks below see the same argv the box would run.
+set -f
+set -- $cmd
+
+case "$cmd" in
+  # Reads that apply's fresh-state re-verification needs (ADR-0004: apply
+  # recomputes the plan and re-verifies preconditions before touching
+  # anything — prune.py/rotate.py's _compute_* on the rw runner).
+  "docker ps -q") allow ;;
+  "docker inspect --format {{.Image}} "?*) allow ;;
+  "docker inspect --format {{.LogPath}} "?*)
+    [ $# -eq 5 ] || reject "docker inspect {{.LogPath}} takes exactly one service"
+    allow ;;
+  "docker images --no-trunc --format {{.ID}}::{{.Repository}}::{{.Tag}}::{{.Size}}") allow ;;
+  "du -b /var/lib/docker/containers/"?*)
+    [ $# -eq 3 ] || reject "du takes exactly one path"
+    case "$3" in *..*) reject "path traversal rejected" ;; esac
+    allow ;;
+  # The two write shapes (prune_images / rotate_logs apply).
+  "docker image rm sha256:"?*)
+    shift 3
+    for id in "$@"; do
+      case "$id" in
+        sha256:?*) ;;
+        *) reject "docker image rm: image id not sha256-pinned: $id" ;;
+      esac
+    done
+    allow ;;
+  "truncate -s 0 /var/lib/docker/containers/"?*)
+    [ $# -eq 4 ] || reject "truncate takes exactly one path"
+    case "$4" in *..*) reject "path traversal rejected" ;; esac
+    allow ;;
+  *) reject "command not in ops-rw allowlist" ;;
+esac
