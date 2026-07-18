@@ -165,10 +165,12 @@ def test_prune_images_apply_uses_the_rw_runner_with_a_valid_token(monkeypatch):
 
 
 def test_rotate_logs_uses_the_injected_runners(monkeypatch):
+    _log = "/var/lib/docker/containers/edge/edge-json.log"
+
     def fake_ro_runner(command):
         if command[:2] == ["docker", "inspect"]:
-            return CommandResult(stdout="/var/log/edge.log\n", stderr="", returncode=0)
-        return CommandResult(stdout="1000\t/var/log/edge.log\n", stderr="", returncode=0)
+            return CommandResult(stdout=f"{_log}\n", stderr="", returncode=0)
+        return CommandResult(stdout=f"1000\t{_log}\n", stderr="", returncode=0)
 
     monkeypatch.setattr(server, "_ssh_runner", lambda: fake_ro_runner)
 

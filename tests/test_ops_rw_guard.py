@@ -66,6 +66,12 @@ REJECTED = [
     # a second line would ride through `sh -c` past the prefix patterns
     ("docker ps -q\nrm -rf /tmp/x", "control whitespace"),
     ("docker image rm sha256:abc\ttruncate -s 0 /etc/passwd", "control whitespace"),
+    ("docker ps -q\rreboot", "control whitespace"),
+    # a glob counts as ONE argv word at validation but re-expands when
+    # `sh -c` runs it — "exactly one path" must hold at execution too
+    ("truncate -s 0 /var/lib/docker/containers/*", "metacharacter"),
+    ("du -b /var/lib/docker/containers/??/x.log", "metacharacter"),
+    ("docker image rm sha256:[a-f]000", "metacharacter"),
     # read-tool / diagnosis shapes have no business on the write key
     ("docker ps -aq", "allowlist"),
     ("docker logs --tail 200 --timestamps edge", "allowlist"),

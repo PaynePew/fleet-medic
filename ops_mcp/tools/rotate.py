@@ -19,9 +19,12 @@ _SERVICE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
 # {{.LogPath}} comes back over the SSH seam and then goes out again as a
 # `du`/`truncate` argument, where the flattened argv is re-parsed by `sh -c`
-# (ADR-0003). Same boundary rule as `service`: absolute path, conservative
-# charset (no whitespace or metacharacters), no `..` segment.
-_LOG_PATH_RE = re.compile(r"^/[A-Za-z0-9._/-]+$")
+# (ADR-0003). Same boundary rule as `service`: conservative charset (no
+# whitespace or metacharacters), no `..` segment — and pinned to the docker
+# data-root this fleet runs, because ops-rw-guard pins the same prefix: the
+# two must agree, or a plan approved at dry-run time dies at the guard
+# mid-apply instead of failing here, before anyone is asked to approve it.
+_LOG_PATH_RE = re.compile(r"^/var/lib/docker/containers/[A-Za-z0-9._/-]+$")
 
 _LOG_PATH_FORMAT = "{{.LogPath}}"
 

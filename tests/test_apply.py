@@ -79,6 +79,22 @@ def test_apply_refuses_bad_inputs(scripted_runner):
             run_apply(runner, action=action, service=service, confirm_token=token)
 
 
+def test_apply_refuses_wrong_or_garbage_tokens(scripted_runner):
+    # Drift/malformed rejection lives in write_plan via the tool — prove it
+    # holds through this entry too. No rm/truncate is scripted here, so if a
+    # bad token ever reached a write the scripted_runner would fail the test.
+    runner, responses = scripted_runner
+    _script_rotate(responses)
+    rotate_token = rotate_logs(runner, "edge", dry_run=True)["confirm_token"]
+
+    _script_prune(responses)
+    with pytest.raises(ValueError, match="drift"):
+        run_apply(runner, action="prune_images", confirm_token=rotate_token)
+
+    with pytest.raises(ValueError, match="malformed"):
+        run_apply(runner, action="prune_images", confirm_token="garbage")
+
+
 def test_main_error_boundary_sanitizes_before_the_public_log(monkeypatch, capsys):
     # A failed apply's message can carry a command's raw stderr — the exact
     # IP/path/host leak shape ADR-0003 closes. main must print a sanitized

@@ -23,15 +23,19 @@ cmd="${SSH_ORIGINAL_COMMAND:-}"
 reject() { echo "ops-rw: $1" >&2; exit 1; }
 allow() {
   if [ -n "${OPS_RW_GUARD_CHECK:-}" ]; then echo "ALLOW"; exit 0; fi
-  exec /bin/sh -c "$cmd"
+  # -f: a glob that survived validation as one argv word must not re-expand
+  # into many at execution (the checks below counted words with globbing off).
+  exec /bin/sh -f -c "$cmd"
 }
 
 # No interactive shell: an empty command means someone ran `ssh ops-rw@box`.
 [ -n "$cmd" ] || reject "interactive shell is not permitted"
 
-# Reject anything that could chain or expand into a second command remotely.
+# Reject anything that could chain or expand into a second command remotely,
+# and any glob character — a glob counts as one word during the per-argument
+# checks below but would multiply into many when the command actually runs.
 case "$cmd" in
-  *[\;\|\&\$\`\<\>\(\)]*) reject "shell metacharacter rejected" ;;
+  *[\;\|\&\$\`\<\>\(\)\*\?\[]*) reject "shell metacharacter rejected" ;;
 esac
 
 # A newline/tab/CR inside the flattened command could smuggle a second line

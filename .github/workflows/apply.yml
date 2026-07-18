@@ -61,9 +61,13 @@ jobs:
         run: uv sync --locked
 
       - name: Write ops-rw identity file
+        env:
+          # Through env, not `${{ }}` inside the script body — the write
+          # credential must never be textually substituted into shell source.
+          OPS_RW_SSH_KEY: ${{ secrets.OPS_RW_SSH_KEY }}
         run: |
           install -m 600 /dev/null "$RUNNER_TEMP/ops-rw"
-          printf '%s\n' "${{ secrets.OPS_RW_SSH_KEY }}" > "$RUNNER_TEMP/ops-rw"
+          printf '%s\n' "$OPS_RW_SSH_KEY" > "$RUNNER_TEMP/ops-rw"
 
       # PAIR: like sensor.yml this rides StrictHostKeyChecking=accept-new,
       # which on an ephemeral runner is TOFU every run (roadmap #8c) — worth

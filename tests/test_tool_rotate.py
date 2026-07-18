@@ -108,6 +108,9 @@ def test_rejects_suspicious_log_path_from_docker_inspect(scripted_runner):
         "var/lib/docker/containers/abc/abc.log",
         "/var/lib/docker/containers/../../etc/passwd",
         "/var/lib/docker/containers/$(reboot).log",
+        # clean path, but outside the pinned docker data-root the ops-rw
+        # guard allows — must die here at dry-run, not post-approval
+        "/data/docker/containers/abc/abc.log",
     ]:
         responses.clear()
         responses[tuple(log_path_command("edge"))] = CommandResult(
