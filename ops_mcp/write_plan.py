@@ -25,7 +25,15 @@ import json
 import time
 from dataclasses import dataclass
 
-DEFAULT_TOKEN_TTL_SECONDS = 900  # 15 minutes — Phase 1 default, not yet tuned
+# 30 minutes. Tuned up from 15 (ADR-0004 / #13 PAIR): the token is minted at
+# dry-run, then a human must approve the box-mutations Environment gate before
+# apply runs — a TTL shorter than realistic approval latency makes an
+# otherwise-valid plan expire mid-approval and forces a needless re-run. This
+# window is only a backstop: apply's primary staleness guard is the fresh
+# plan-digest re-verification (verify_confirm_token below), so widening it for
+# approval ergonomics costs little. Kept well short of hours so a token can't
+# stay valid long past the box state it was reasoned about.
+DEFAULT_TOKEN_TTL_SECONDS = 1800
 
 
 def compute_plan_digest(plan: dict) -> str:
