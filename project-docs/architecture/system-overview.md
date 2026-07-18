@@ -1,7 +1,10 @@
 # 系統架構總覽(working draft,grill 對齊用)
 
-> 2026-07-11 起草。狀態:**Phase 1 範圍已定,細節仍在 grill**(見 roadmap.md 的 Open Questions)。
-> 本文件的 Mermaid 是對齊用活圖;若日後進 README 面向面試官,依慣例 render 成 PNG 再 commit。
+> 2026-07-11 起草,2026-07-18 更新。狀態:**Phase 1 sensor 已上線、讀/寫工具已合入 main**(見 roadmap.md)。
+> 下方 SVG 是面向面試官的 README 首屏圖(向量、可版控、可縮放);Mermaid 保留為細部對齊活圖
+> (2026-07-11 版,部分已被 ADR-0002/0004 取代,待刷新)。
+
+![fleet-medic 系統架構:off-box 確定性感測器喚醒 LLM agent,經風險分層工具帶、閘門後修復 VPS fleet 並自我驗證](system-overview.svg)
 
 ## 一句話
 
