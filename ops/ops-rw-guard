@@ -38,6 +38,15 @@ case "$cmd" in
   *[\;\|\&\$\`\<\>\(\)\*\?\[]*) reject "shell metacharacter rejected" ;;
 esac
 
+# Reject quotes and backslash. allow() re-parses $cmd through `sh -c`, which
+# strips these before executing — so `.""./` or `.\./` reads as one literal
+# word here (no `..` substring, one argv slot) yet reconstructs to `../` at
+# execution, climbing out of the pinned data-root past the traversal checks
+# below. The legitimate write argv never contains them, so reject outright.
+case "$cmd" in
+  *\"* | *\\* | *\'*) reject "quote or backslash rejected" ;;
+esac
+
 # A newline/tab/CR inside the flattened command could smuggle a second line
 # past the prefix patterns below (`sh -c` runs every line) — reject outright.
 nl=$(printf '\nx'); nl=${nl%x}

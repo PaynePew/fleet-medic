@@ -89,6 +89,11 @@ REJECTED = [
     ),
     ("truncate -s 0 /var/lib/docker/containers/../../etc/passwd", "traversal"),
     ("du -b /var/lib/docker/containers/x/../../../etc", "traversal"),
+    # quote/backslash reconstruct to `..` only after `sh -c` strips them, so
+    # they'd sail past the literal `*..*` traversal check as one clean word
+    ('truncate -s 0 /var/lib/docker/containers/a/.""./.""./etc/shadow', "quote or backslash"),
+    ("truncate -s 0 /var/lib/docker/containers/a/.\\./.\\./etc/shadow", "quote or backslash"),
+    ("du -b /var/lib/docker/containers/a/.''./.''./etc/shadow", "quote or backslash"),
     ("du -b /var/lib/docker/containers/a.log /etc/shadow", "exactly one"),
     ("du -sh /", "allowlist"),
     ("docker inspect --format {{.LogPath}} edge extra", "exactly one"),

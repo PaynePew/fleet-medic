@@ -34,6 +34,13 @@ case "$cmd" in
   *[\;\|\&\$\`\<\>\(\)\*\?\[]*) reject "shell metacharacter rejected" ;;
 esac
 
+# Reject quotes and backslash: allow()'s `sh -c` strips them before execution,
+# so a quoted word validated here reconstructs to something else when it runs
+# (same disagreement ops-rw-guard closes). No read tool sends them.
+case "$cmd" in
+  *\"* | *\\* | *\'*) reject "quote or backslash rejected" ;;
+esac
+
 # A newline/tab/CR inside the flattened command could smuggle a second line
 # past the allowlist prefixes below (`sh -c` runs every line) — reject
 # outright (same check as ops-rw-guard).
