@@ -104,7 +104,8 @@ REJECTED = [
 def test_guard_allows_exact_apply_argv(command):
     result = _decide(command)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "ALLOW"
+    # Check mode reports "ALLOW: <effective command>" (ADR-0005).
+    assert result.stdout.strip().startswith("ALLOW")
 
 
 @pytest.mark.parametrize("command,reason", REJECTED)
@@ -112,3 +113,29 @@ def test_guard_rejects(command, reason):
     result = _decide(command)
     assert result.returncode != 0
     assert reason in result.stderr
+
+
+# The two FS ops must run as root (ADR-0005: root-owned docker json logs);
+# the docker-socket ops must NOT (docker group already reaches them).
+@pytest.mark.parametrize(
+    "command",
+    [
+        "du -b /var/lib/docker/containers/abc/abc-json.log",
+        "truncate -s 0 /var/lib/docker/containers/abc/abc-json.log",
+    ],
+)
+def test_fs_ops_run_via_sudo(command):
+    assert _decide(command).stdout.strip() == f"ALLOW: sudo -n {command}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "docker ps -q",
+        "docker image rm sha256:0a1b2c",
+        "docker inspect --format {{.Image}} abc123",
+        "docker images --no-trunc --format {{.ID}}::{{.Repository}}::{{.Tag}}::{{.Size}}",
+    ],
+)
+def test_docker_socket_ops_do_not_use_sudo(command):
+    assert "sudo" not in _decide(command).stdout

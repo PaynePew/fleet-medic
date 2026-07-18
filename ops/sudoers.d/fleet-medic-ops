@@ -1,0 +1,18 @@
+# fleet-medic box-side sudoers (ADR-0005). NOPASSWD sudo scoped to exactly the
+# write-path filesystem ops the guards run — the only way a whitelisted
+# du/truncate can touch root-owned docker json logs under
+# /var/lib/docker/containers.
+#
+# The forced-command guards (ops/ops-ro-guard, ops/ops-rw-guard) are the real
+# boundary; this file is the second, argv-pinned layer. The guards reject `..`
+# and enforce a single path BEFORE calling sudo, closing the sudoers `*`
+# wildcard's cross-`/` matching.
+#
+# This file is the source of truth. Deploy to /etc/sudoers.d/fleet-medic-ops
+# (owner root, mode 440), and validate with `visudo -cf` before installing.
+#
+#   ops-ro: size a container's json log during a rotate_logs dry-run.
+#   ops-rw: the same size re-verification at apply time, plus the truncate.
+
+ops-ro ALL=(root) NOPASSWD: /usr/bin/du -b /var/lib/docker/containers/*
+ops-rw ALL=(root) NOPASSWD: /usr/bin/du -b /var/lib/docker/containers/*, /usr/bin/truncate -s 0 /var/lib/docker/containers/*

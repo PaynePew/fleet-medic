@@ -1,6 +1,6 @@
 # Coding Standards — fleet-medic
 
-> **Freshness**: last reconciled through **ADR-0004** (2026-07-18). 若 `project-docs/adr/`
+> **Freshness**: last reconciled through **ADR-0005** (2026-07-18). 若 `project-docs/adr/`
 > 有比這個戳記更新的 Accepted ADR,本檔即為過期(drift)——依 §0.3 reconcile。
 
 ## §0 本檔制度(meta)
@@ -36,6 +36,11 @@ CLAUDE.md 硬約束的審查條款化;reviewer 逐條對照 diff:
   token(= 方案 digest + TTL);apply 只在 L2-gated(Environment reviewer)job 內以 ops-rw
   執行,且**重驗前置**、方案漂移即拒;LLM 不與 ops-rw 同處。無/錯誤/過期 token 而能真執行,
   或 apply 走非 gated 路徑用寫金鑰 = critical。
+- **box 特權經 guard 收斂**(ADR-0005):寫路徑碰 root-owned 資源時,特權(sudo)只在
+  box 端 forced-command guard 內、對已審白名單 argv 施加;放大範圍 = 白名單那幾條命令(binary+flag+
+  路徑前綴釘死),且 guard 在 sudo 前先擋 `..`/多路徑。把 sudo 開在 guard 外、或白名單放寬到未收斂
+  的命令再 sudo = critical。被放行的命令**能否成功執行**只能靠真 box 驗(§4),注入 runner 的單元
+  測試照不到權限洞。
 - **工具輸出有界**:top-N / 截斷,且有測試斷言上界;無界輸出 = high。
 - **預算閘是確定性 code**:per-incident 與日上限用 code 數 token/計次,
   不是 prompt 叮嚀;超限行為(放棄+報告)有測試。

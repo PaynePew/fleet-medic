@@ -18,11 +18,20 @@
 cmd="${SSH_ORIGINAL_COMMAND:-}"
 
 reject() { echo "ops-ro: $1" >&2; exit 1; }
-allow() {
-  if [ -n "${OPS_RO_GUARD_CHECK:-}" ]; then echo "ALLOW"; exit 0; fi
+
+# _run executes (or, in check mode, reports) one effective command. allow()
+# runs the client command as-is; allow_root() prepends `sudo -n` for the one
+# read that must touch root-owned docker state: sizing a container's json log
+# during a rotate_logs dry-run (ADR-0005). General reads (df, disk_breakdown's
+# du, docker socket ops) stay unprivileged. Check mode prints the *effective*
+# command so a test can assert which branch got sudo.
+_run() {  # $1 = effective command string
+  if [ -n "${OPS_RO_GUARD_CHECK:-}" ]; then echo "ALLOW: $1"; exit 0; fi
   # -f: no glob may expand at execution that the checks above never saw.
-  exec /bin/sh -f -c "$cmd"
+  exec /bin/sh -f -c "$1"
 }
+allow()      { _run "$cmd"; }
+allow_root() { _run "sudo -n $cmd"; }
 
 # No interactive shell: an empty command means someone ran `ssh ops-ro@box`.
 [ -n "$cmd" ] || reject "interactive shell is not permitted"
@@ -51,9 +60,21 @@ case "$cmd" in
   *"$nl"* | *"$tab"* | *"$cr"*) reject "control whitespace rejected" ;;
 esac
 
-# Read-only allowlist: only these diagnostic prefixes. Tighten to exactly what
-# the ops-mcp read tools send before relying on this in production.
+# Split argv the way allow()'s `sh -c` will (globbing off), so the sudo'd du
+# branch below can enforce a single path the same way ops-rw-guard does.
+set -f
+set -- $cmd
+
+# Read-only allowlist. The containers-path `du` is matched first and runs via
+# `sudo -n` (ADR-0005: rotate_logs' dry-run must size a root-owned json log) —
+# so it is tightened to exactly one non-traversing path, because sudo would
+# otherwise let a second path argument read any root file. All other reads
+# (general du for disk_breakdown, df, docker socket ops) stay unprivileged.
 case "$cmd" in
-  "docker logs "*|"docker inspect "*|"docker ps"*|"docker system df"*|"df "*|"du "*) allow ;;
+  "du -b /var/lib/docker/containers/"*)
+    [ $# -eq 3 ] || reject "sudo du takes exactly one path"
+    case "$3" in *..*) reject "path traversal rejected" ;; esac
+    allow_root ;;
+  "docker logs "*|"docker inspect "*|"docker ps"*|"docker images "*|"docker system df"*|"df "*|"du "*) allow ;;
   *) reject "command not in read-only allowlist" ;;
 esac
