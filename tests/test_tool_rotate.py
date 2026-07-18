@@ -94,6 +94,32 @@ def test_rejects_unsafe_service_names():
             rotate_logs(unreachable, payload, dry_run=True)
 
 
+def test_rejects_suspicious_log_path_from_docker_inspect(scripted_runner):
+    # {{.LogPath}} comes back over the SSH seam and then goes out again as a
+    # `du`/`truncate` argument, where the flattened argv is re-parsed by
+    # `sh -c` (ADR-0003) — a path with whitespace, metacharacters, an internal
+    # newline, traversal, or a relative form must be refused before it
+    # becomes command argv (issue #13).
+    runner, responses = scripted_runner
+    for bad_path in [
+        "/var/lib/docker/x.log; rm -rf /",
+        "/var/lib/docker/containers/a b/ab.log",
+        "/var/lib/docker/containers/a\nb.log",
+        "var/lib/docker/containers/abc/abc.log",
+        "/var/lib/docker/containers/../../etc/passwd",
+        "/var/lib/docker/containers/$(reboot).log",
+        # clean path, but outside the pinned docker data-root the ops-rw
+        # guard allows — must die here at dry-run, not post-approval
+        "/data/docker/containers/abc/abc.log",
+    ]:
+        responses.clear()
+        responses[tuple(log_path_command("edge"))] = CommandResult(
+            stdout=f"{bad_path}\n", stderr="", returncode=0
+        )
+        with pytest.raises(RuntimeError, match="LogPath"):
+            rotate_logs(runner, "edge", dry_run=True)
+
+
 def test_dry_run_raises_clearly_when_inspect_fails(scripted_runner):
     runner, responses = scripted_runner
     responses[tuple(log_path_command("missing"))] = CommandResult(

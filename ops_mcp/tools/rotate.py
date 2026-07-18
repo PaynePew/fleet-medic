@@ -17,6 +17,15 @@ from ops_mcp.write_plan import issue_confirm_token, verify_confirm_token
 # name before it reaches the seam.
 _SERVICE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
+# {{.LogPath}} comes back over the SSH seam and then goes out again as a
+# `du`/`truncate` argument, where the flattened argv is re-parsed by `sh -c`
+# (ADR-0003). Same boundary rule as `service`: conservative charset (no
+# whitespace or metacharacters), no `..` segment — and pinned to the docker
+# data-root this fleet runs, because ops-rw-guard pins the same prefix: the
+# two must agree, or a plan approved at dry-run time dies at the guard
+# mid-apply instead of failing here, before anyone is asked to approve it.
+_LOG_PATH_RE = re.compile(r"^/var/lib/docker/containers/[A-Za-z0-9._/-]+$")
+
 _LOG_PATH_FORMAT = "{{.LogPath}}"
 
 
@@ -52,6 +61,11 @@ def _compute_target(runner: CommandRunner, service: str) -> dict:
     log_path = path_result.stdout.strip()
     if not log_path:
         raise RuntimeError(f"rotate_logs: empty LogPath for service={service!r}")
+    if not _LOG_PATH_RE.match(log_path) or ".." in log_path.split("/"):
+        raise RuntimeError(
+            f"rotate_logs: suspicious LogPath for service={service!r}, "
+            f"refusing to use it as command argv: {log_path!r}"
+        )
 
     size_result = run_checked(
         runner, log_size_command(log_path), f"rotate_logs: `du -b {log_path}` failed"
