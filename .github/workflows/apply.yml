@@ -1,0 +1,80 @@
+# fleet-medic gated apply: the ONLY workflow that may ever see OPS_RW_SSH_KEY
+# (ADR-0004 Option A; issue #13). The L2 gate is the GitHub Environment
+# `box-mutations` required reviewer: a human approves THIS run after reading
+# the dry-run plan, and the confirm_token binds that approval to that exact
+# plan — the write tool re-verifies fresh box state and refuses on drift or
+# expiry (write_plan.py), so approval is never a blank check.
+#
+# DRAFT for pairing review (handoff 2026-07-18: #13 配對做). Open decision
+# points are marked "PAIR:" inline. Until #6 lands, dispatch is manual: run a
+# write tool's dry-run over MCP, paste the confirm_token here, approve the
+# environment gate. #6's Agent Loop later produces the plan + token as an
+# artifact instead of a human pasting it.
+name: apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Write tool to apply (must match the approved dry-run plan)"
+        required: true
+        type: choice
+        options:
+          - prune_images
+          - rotate_logs
+      service:
+        description: "Service name (rotate_logs only)"
+        required: false
+        type: string
+        default: ""
+      confirm_token:
+        description: "confirm_token from the dry-run plan being approved"
+        required: true
+        type: string
+
+# Two applies must never overlap each other (or a second queued approval).
+concurrency:
+  group: box-mutations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    # PAIR: TTL tension — write_plan's confirm token expires 15 min after the
+    # dry-run, and the environment reviewer may approve later than that. An
+    # expired-but-approved apply fails closed (re-run dry-run, re-approve),
+    # which is safe but may be annoying; tune DEFAULT_TOKEN_TTL_SECONDS vs
+    # approval latency deliberately, don't discover it in an incident.
+    environment: box-mutations
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Write ops-rw identity file
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/ops-rw"
+          printf '%s\n' "${{ secrets.OPS_RW_SSH_KEY }}" > "$RUNNER_TEMP/ops-rw"
+
+      # PAIR: like sensor.yml this rides StrictHostKeyChecking=accept-new,
+      # which on an ephemeral runner is TOFU every run (roadmap #8c) — worth
+      # fixing for the write path first (pin the host key here) before, or
+      # alongside, wiring the box-side ops-rw-guard.
+      - name: Apply approved plan
+        env:
+          OPS_BOX_HOST: ${{ secrets.OPS_BOX_HOST }}
+          OPS_RW_SSH_KEY_PATH: ${{ runner.temp }}/ops-rw
+          OPS_RW_SSH_USER: ops-rw
+          APPLY_ACTION: ${{ inputs.action }}
+          APPLY_SERVICE: ${{ inputs.service }}
+          APPLY_CONFIRM_TOKEN: ${{ inputs.confirm_token }}
+        run: uv run python -m ops_mcp.apply
