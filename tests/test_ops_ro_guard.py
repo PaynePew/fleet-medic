@@ -56,6 +56,9 @@ REJECTED = [
     ("docker inspect foo && rm -rf /", "metacharacter"),
     ("cat /etc/shadow", "allowlist"),
     ("rm -rf /tmp/x", "allowlist"),
+    # a second line would ride through `sh -c` past the allowlist prefixes
+    ("docker logs --tail 5 edge\nrm -rf /tmp/x", "control whitespace"),
+    ("df -P /\treboot", "control whitespace"),
 ]
 
 

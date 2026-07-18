@@ -31,6 +31,16 @@ case "$cmd" in
   *[\;\|\&\$\`\<\>\(\)]*) reject "shell metacharacter rejected" ;;
 esac
 
+# A newline/tab/CR inside the flattened command could smuggle a second line
+# past the allowlist prefixes below (`sh -c` runs every line) — reject
+# outright (same check as ops-rw-guard).
+nl=$(printf '\nx'); nl=${nl%x}
+tab=$(printf '\tx'); tab=${tab%x}
+cr=$(printf '\rx'); cr=${cr%x}
+case "$cmd" in
+  *"$nl"* | *"$tab"* | *"$cr"*) reject "control whitespace rejected" ;;
+esac
+
 # Read-only allowlist: only these diagnostic prefixes. Tighten to exactly what
 # the ops-mcp read tools send before relying on this in production.
 case "$cmd" in
